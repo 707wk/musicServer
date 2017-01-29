@@ -17,8 +17,7 @@ public class clienttst
     {
         try 
         {
-        	InetAddress.getByName("192.168.152.6").isReachable(3000);
-            Socket socket=new Socket("192.168.152.6",1707);
+            Socket socket=new Socket("192.168.152.6",8580);
             OutputStream os=socket.getOutputStream();
             PrintWriter pw=new PrintWriter(os);
             pw.write("connect");

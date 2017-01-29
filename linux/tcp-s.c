@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <iconv.h>
 #include <dirent.h>
+#include <fcntl.h>
 
 #define SERVPORT 8580 /*server port number */
 #define BACKLOG 10 /*max link*/
@@ -51,7 +52,7 @@ void savelist()
 			musiclist[i].duration);
 		}
 	}
-	printf("\tsave [%4d] CMF\n",i);
+	
 	fclose(fpsave);
 }
 
@@ -107,6 +108,7 @@ int commandlist(int client_fd)
 	sprintf(tmpstr,"%d\n",musicnums);
 	if (send(client_fd, tmpstr, strlen(tmpstr)+1, 0) == -1)
 	{
+		printf("\tsend error!\n");
 		//close(client_fd);
 		return 1;
 	}
@@ -122,6 +124,7 @@ int commandlist(int client_fd)
 			u2g(tmpstr,strlen(tmpstr),client_mesg,MAX_MESG_LEN);
 			if (send(client_fd, client_mesg, strlen(client_mesg)+1, 0) == -1)
 			{
+				printf("\tsend error!\n");
 				//close(client_fd);
 				return 1;
 			}
@@ -137,11 +140,12 @@ int commandget(int client_fd,char* filesname)
 	char tmpstr[MAX_MESG_LEN]="";
 	char client_mesg[MAX_MESG_LEN]="";
 	sprintf(tmpstr,"./music/%s",filesname);
+	double filessize=get_file_size(tmpstr);
 	FILE* fpout=fopen(tmpstr,"rb");
 	if(fpout==NULL)
 	{
-		printf("\tnot found\n");
-		send(client_fd, "NULL\n", MAX_MESG_LEN, 0);
+		printf("\tFile not found\n");
+		send(client_fd, "NULL\n", strlen("NULL\n")+1, 0);
 		//close(client_fd);
 		return 1;
 	}
@@ -151,14 +155,16 @@ int commandget(int client_fd,char* filesname)
 	u2g(tmpstr,strlen(tmpstr),client_mesg,MAX_MESG_LEN);
 	if (send(client_fd, client_mesg, strlen(client_mesg)+1, 0) == -1)
 	{
+		printf("\tsend error!\n");
 		//close(client_fd);
 		return 1;
 	}
-	double filessize=get_file_size(tmpstr);
+	
 	sprintf(tmpstr,"%lf\n",filessize);
-	printf("\tsize: %10.0lfB\n",filessize);
+	printf("\tsize     :[%10.0lf]B\n",filessize);
 	if (send(client_fd, tmpstr, strlen(tmpstr)+1, 0) == -1)
 	{
+		printf("\tsend error!\n");
 		//close(client_fd);
 		return 1;
 	}
@@ -168,32 +174,20 @@ int commandget(int client_fd,char* filesname)
 	int length=0 ;
 	double sendsum=0;
 	int sendbit=0;
-	double lastper=-1;
-	double nowper=0;
-	char bar[52]={0};
-	const char *sta="-\\|/";
 	for(;(length=fread(buffer,sizeof(char),MAX_MESG_LEN,fpout))>0;)
 	{
 		if((sendbit=send(client_fd,buffer,length,0))<0)
 		{
-			printf("\t发送失败");
+			printf("\tsend error!\n");
 			//close(client_fd);
 			return 1;
 		}
 		sendsum+=sendbit;
-		nowper=sendsum*100/filessize;
-		if(lastper!=nowper)
-		{
-			lastper=nowper;
-			//printf("\tsend: %3d%%\r",nowper);
-			printf("\t[%-50s],%4.1lf%%,[%c]\r",bar,nowper,sta[(int)nowper%4]);
-			bar[(int)nowper/2]= '=';
-			bar[(int)nowper/2+1]='\0';
-			//sleep(1);
-		}
+		printf("\tsend Bits:[%10.0lf/%10.0lf]B\r",sendsum,filessize);
+
 		bzero(buffer,MAX_MESG_LEN);
 	}
-	printf("\n\tsend Bits: %10.0lfB\n",sendsum);
+	printf("\tsend Bits:[%10.0lf/%10.0lf]B\n",sendsum,filessize);
 	fclose(fpout);
 	
 	return 0;
@@ -204,6 +198,52 @@ int commandput(int client_fd,char* filesname,double filessize)
 {
 	char tmpstr[MAX_MESG_LEN]="";
 	char client_mesg[MAX_MESG_LEN]="";
+	sprintf(tmpstr,"./music/%s",filesname);
+	if((access(tmpstr,F_OK))!=-1)
+	{
+		printf("\tFile already exist\n");
+		if (send(client_fd, "REPETITION\n", strlen("REPETITION\n")+1, 0) == -1)
+		{
+			printf("\tsend error!\n");
+			//close(client_fd);
+			return 1;
+		}
+		return 1;
+	}
+	
+	if (send(client_fd, "OK\n", strlen("OK\n")+1, 0) == -1)
+	{
+		printf("\tsend error!\n");
+		//close(client_fd);
+		return 1;
+	}
+
+	FILE *fpput = fopen(tmpstr, "w");
+	if (fpput == NULL)
+	{
+		printf("File:\t%s Can Not Write!\n", filesname);
+		return 1;
+	}
+
+	char buffer[MAX_MESG_LEN];
+	bzero(buffer,MAX_MESG_LEN);
+	int length=0 ;
+	double recsum=0;
+	int recbit=0;
+	for(;(length = recv(client_fd, buffer, MAX_MESG_LEN, 0))>0;)
+	{
+		recbit = fwrite(buffer, sizeof(char), length, fpput);
+
+		recsum+=recbit;
+		printf("\trec Bits :[%10.0lf/%10.0lf]B\r",recsum,filessize);
+
+		bzero(buffer, MAX_MESG_LEN);
+	}
+
+	printf("\trec Bits :[%10.0lf/%10.0lf]B\n",recsum,filessize);
+
+	fclose(fpput);
+	
 	return 0;
 }
 
@@ -232,8 +272,9 @@ int commanddel(int client_fd,char* filesname)
 			{
 				perror("remove");
 			}
-			if (send(client_fd, "SUCCEED", strlen("SUCCEED")+1, 0) == -1)
+			if (send(client_fd, "SUCCEED\n", strlen("SUCCEED\n")+1, 0) == -1)
 			{
+				printf("\tsend error!\n");
 				//close(client_fd);
 				return 1;
 			}
@@ -242,7 +283,7 @@ int commanddel(int client_fd,char* filesname)
 	}
 	if(i==MAX_MP3_NUMS)
 	{
-		printf("\tnot found\n");
+		printf("\tFile not found\n");
 	}
 	return 0;
 }
@@ -259,6 +300,7 @@ void thfuniction(int* sockfd)
 	int client_fd=*sockfd; /*sockfd:监听socket;client_fd:数据传输socket */
 	char client_mesg[MAX_MESG_LEN];
 	char tmpstr[MAX_MESG_LEN]="";
+	int i=0;
 	
 	/* 子进程代码段 */
 	if(recv(client_fd, client_mesg, MAX_MESG_LEN, 0) == -1)
@@ -302,7 +344,34 @@ command,filesname);
 \tduration :[%s]\n\
 \tsize     :[%.0lf]B\n",
 command,filesname,author,special,duration,filessize);
-		commandput(client_fd,filesname,filessize);
+
+		for(i=0;i<MAX_MP3_NUMS;i++)
+		{
+			if(musiclist[i].state==0)
+				break;
+		}
+		if(i<MAX_MP3_NUMS)
+		{
+			if(commandput(client_fd,filesname,filessize)==0)
+			{
+				musiclist[i].state=1;
+				strcpy(musiclist[i].filesname,filesname);
+				strcpy(musiclist[i].author,author);
+				strcpy(musiclist[i].special,special);
+				strcpy(musiclist[i].duration,duration);
+				musicnums++;
+				savelist();
+			}
+		}
+		else
+		{
+			if (send(client_fd, "NOT ENOUGH\n", strlen("NOT ENOUGH\n")+1, 0) == -1)
+			{
+				printf("\tsend error!\n");
+				//close(client_fd);
+				//return 1;
+			}
+		}
 	}
 	else if(strcmp(command,"DEL")==0)
 	{
@@ -317,7 +386,7 @@ command,filesname);
 	else
 	{
 		printf("\tcommand not found\n");
-		send(client_fd, "NULL\n", MAX_MESG_LEN, 0);
+		send(client_fd, "NULL\n", strlen("NULL\n")+1, 0);
 	}
 
 	printf("\tsocket close\n");

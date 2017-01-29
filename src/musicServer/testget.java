@@ -21,13 +21,14 @@ public class testget {
             netin=new DataInputStream(client.getInputStream()); 
             PrintWriter pw=new PrintWriter(client.getOutputStream());
             BufferedReader br=new BufferedReader(new InputStreamReader(client.getInputStream()));
-            pw.write("GET '001жа.mp3'");
+            pw.write("GET '0091.mp3'");
             pw.flush();
             //netout = new DataOutputStream(client.getOutputStream());
             //netout.writeChars("GET 003.mp3");
             String filesname=br.readLine();
             if(filesname.equals("NULL")){
             	System.out.println("not found files "+filesname);
+            	return ;
             }else{
             	System.out.println("files: ["+filesname+"]");
             }
