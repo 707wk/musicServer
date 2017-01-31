@@ -21,6 +21,7 @@
 #define MAX_MP3_NUMS 1000 /*max mp3 nums*/
 
 //#define PTHREADTEST //多线程模式
+#define RUNONWINDOWS //客户端是gb2312编码
 
 struct mp3info
 {
@@ -56,6 +57,7 @@ void savelist()
 	fclose(fpsave);
 }
 
+#ifdef RUNONWINDOWS
 //编码转换
 int code_convert(char *from_charset,char *to_charset,char *inbuf,int inlen,char *outbuf,int outlen)
 {
@@ -85,6 +87,7 @@ int g2u(char *inbuf,size_t inlen,char *outbuf,size_t outlen)
 {
 	return code_convert("gb2312","utf-8",inbuf,inlen,outbuf,outlen);
 }
+#endif
 
 //获取文件大小
 double get_file_size(const char *path)
@@ -116,19 +119,24 @@ int commandlist(int client_fd)
 	{
 		if(musiclist[i].state==1)
 		{
-			sprintf(tmpstr,"'%s' '%s' '%s' '%s'\n",
+			sprintf(client_mesg,"'%s' '%s' '%s' '%s'\n",
 			musiclist[i].filesname,
 			musiclist[i].author,
 			musiclist[i].special,
 			musiclist[i].duration);
-			u2g(tmpstr,strlen(tmpstr),client_mesg,MAX_MESG_LEN);
+			
+			#ifdef RUNONWINDOWS
+			u2g(client_mesg,strlen(client_mesg),tmpstr,MAX_MESG_LEN);
+			strcpy(client_mesg,tmpstr);
+			#endif
+
 			if (send(client_fd, client_mesg, strlen(client_mesg)+1, 0) == -1)
 			{
 				printf("\tsend error!\n");
 				//close(client_fd);
 				return 1;
 			}
-			printf("\tsend: %s",tmpstr);
+			printf("\tsend: %s",client_mesg);
 		}
 	}
 	return 0;
@@ -151,8 +159,13 @@ int commandget(int client_fd,char* filesname)
 	}
 	//printf("found ");
 	
-	sprintf(tmpstr,"%s\n",filesname);
-	u2g(tmpstr,strlen(tmpstr),client_mesg,MAX_MESG_LEN);
+	sprintf(client_mesg,"%s\n",filesname);
+	
+	#ifdef RUNONWINDOWS
+	u2g(client_mesg,strlen(client_mesg),tmpstr,MAX_MESG_LEN);
+	strcpy(client_mesg,tmpstr);
+	#endif
+
 	if (send(client_fd, client_mesg, strlen(client_mesg)+1, 0) == -1)
 	{
 		printf("\tsend error!\n");
@@ -318,8 +331,10 @@ void thfuniction(int* sockfd)
 	}
 	else if(strcmp(command,"GET")==0)
 	{
+		#ifdef RUNONWINDOWS
 		g2u(filesname,strlen(filesname),tmpstr,MAX_MESG_LEN);
 		strcpy(filesname,tmpstr);
+		#endif
 		printf("\
 \tcommand  :[%s]\n\
 \tfilesname:[%s]\n",
@@ -328,6 +343,7 @@ command,filesname);
 	}
 	else if(strcmp(command,"PUT")==0)
 	{
+		#ifdef RUNONWINDOWS
 		g2u(filesname,strlen(filesname),tmpstr,MAX_MESG_LEN);
 		strcpy(filesname,tmpstr);
 		g2u(author,strlen(author),tmpstr,MAX_MESG_LEN);
@@ -336,6 +352,8 @@ command,filesname);
 		strcpy(special,tmpstr);
 		g2u(duration,strlen(duration),tmpstr,MAX_MESG_LEN);
 		strcpy(duration,tmpstr);
+		#endif
+		
 		printf("\
 \tcommand  :[%s]\n\
 \tfilesname:[%s]\n\
@@ -375,8 +393,11 @@ command,filesname,author,special,duration,filessize);
 	}
 	else if(strcmp(command,"DEL")==0)
 	{
+		#ifdef RUNONWINDOWS
 		g2u(filesname,strlen(filesname),tmpstr,MAX_MESG_LEN);
 		strcpy(filesname,tmpstr);
+		#endif
+		
 		printf("\
 \tcommand  :[%s]\n\
 \tfilesname:[%s]\n",
