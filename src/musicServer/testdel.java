@@ -21,7 +21,7 @@ public class testdel {
             netin=new DataInputStream(client.getInputStream()); 
             PrintWriter pw=new PrintWriter(client.getOutputStream());
             BufferedReader br=new BufferedReader(new InputStreamReader(client.getInputStream()));
-            pw.write("DEL '004.mp3'");
+            pw.write("DEL '0011.mp3'\n");
             pw.flush();
             System.out.println("rec ["+br.readLine()+"]"); 
             netin.close();  

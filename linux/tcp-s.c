@@ -1,3 +1,36 @@
+/**************************************
+ *FILE          :T:\musicServer\linux\tcp-s.c
+ *AUTHOR        :707wk
+ *ORGANIZATION  :GT-Soft Studio
+ *LAST-MODIFIED :2017/2/4 14:12:26
+ *TARGET        :C/C++ 
+ *EMAIL         :gtsoft_wk@foxmail.com
+ *LOGO          :
+               #########                       
+              ############                     
+              #############                    
+             ##  ###########                   
+            ###  ###### #####                  
+            ### #######   ####                 
+           ###  ########## ####                
+          ####  ########### ####               
+        #####   ###########  #####             
+       ######   ### ########   #####           
+       #####   ###   ########   ######         
+      ######   ###  ###########   ######       
+     ######   #### ##############  ######      
+    #######  ##################### #######     
+    #######  ##############################    
+   #######  ###### ################# #######   
+   #######  ###### ###### #########   ######   
+   #######    ##  ######   ######     ######   
+   #######        ######    #####     #####    
+    ######        #####     #####     ####     
+     #####        ####      #####     ###      
+      #####       ###        ###      #        
+        ##       ####        ####              
+***************************************/
+
 //arm-linux-gcc -o tcp-s -lpthread tcp-s.c
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,13 +47,14 @@
 #include <iconv.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <signal.h>
 
-#define SERVPORT 8580 /*server port number */
-#define BACKLOG 10 /*max link*/
-#define MAX_MESG_LEN 1024  /*max message len*/
-#define MAX_MP3_NUMS 1000 /*max mp3 nums*/
+#define SERVPORT 8580      //端口号
+#define BACKLOG 128        //并发连接数
+#define MAX_MESG_LEN 1024  //信息长度
+#define MAX_MP3_NUMS 1000  //最大文件数
 
-//#define PTHREADTEST //多线程模式
+//#define PTHREADTEST  //多线程模式
 #define RUNONWINDOWS //客户端是gb2312编码
 
 struct mp3info
@@ -35,9 +69,30 @@ struct mp3info
 	char special[50];
 	//时长
 	char duration[50];
-}musiclist[MAX_MP3_NUMS];
-int musicnums=0;
+}musiclist[MAX_MP3_NUMS];//存储音乐信息列表
+int musicnums=0;         //存储音乐数
+int sumclient=0;         //每秒连接客户端数
+double runtimes=0;       //运行时长
+int listnums=0;          //请求次数
+int getnums=0;           //请求次数
+int putnums=0;           //请求次数
+int delnums=0;           //请求次数
 
+//日志函数
+void logprintf(char* str)
+{
+	struct timeval tv;
+	struct tm* ptm;
+	char time_str[128];
+	FILE* fplog=fopen("log.txt","a");
+	gettimeofday(&tv, NULL);
+	ptm = localtime(&tv.tv_sec);
+	strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", ptm);
+	fprintf(fplog,"[%s]:%s\n",time_str,str);
+	fclose(fplog);
+}
+
+//保存文件信息
 void savelist()
 {
 	int i=0;
@@ -111,7 +166,7 @@ int commandlist(int client_fd)
 	sprintf(tmpstr,"%d\n",musicnums);
 	if (send(client_fd, tmpstr, strlen(tmpstr)+1, 0) == -1)
 	{
-		printf("\tsend error!\n");
+		//printf("send error!\n");
 		//close(client_fd);
 		return 1;
 	}
@@ -132,11 +187,11 @@ int commandlist(int client_fd)
 
 			if (send(client_fd, client_mesg, strlen(client_mesg)+1, 0) == -1)
 			{
-				printf("\tsend error!\n");
+				//printf("send error!\n");
 				//close(client_fd);
 				return 1;
 			}
-			printf("\tsend: %s",client_mesg);
+			//printf("send: %s",client_mesg);
 		}
 	}
 	return 0;
@@ -152,7 +207,7 @@ int commandget(int client_fd,char* filesname)
 	FILE* fpout=fopen(tmpstr,"rb");
 	if(fpout==NULL)
 	{
-		printf("\tFile not found\n");
+		logprintf("File not found");
 		send(client_fd, "NULL\n", strlen("NULL\n")+1, 0);
 		//close(client_fd);
 		return 1;
@@ -168,16 +223,16 @@ int commandget(int client_fd,char* filesname)
 
 	if (send(client_fd, client_mesg, strlen(client_mesg)+1, 0) == -1)
 	{
-		printf("\tsend error!\n");
+		//printf("send error!\n");
 		//close(client_fd);
 		return 1;
 	}
 	
 	sprintf(tmpstr,"%lf\n",filessize);
-	printf("\tsize     :[%10.0lf]B\n",filessize);
+	//printf("size:[%10.0lf]B\n",filessize);
 	if (send(client_fd, tmpstr, strlen(tmpstr)+1, 0) == -1)
 	{
-		printf("\tsend error!\n");
+		//printf("send error!\n");
 		//close(client_fd);
 		return 1;
 	}
@@ -191,16 +246,17 @@ int commandget(int client_fd,char* filesname)
 	{
 		if((sendbit=send(client_fd,buffer,length,0))<0)
 		{
-			printf("\tsend error!\n");
+			//printf("send error!\n");
 			//close(client_fd);
 			return 1;
 		}
 		sendsum+=sendbit;
-		printf("\tsend Bits:[%10.0lf/%10.0lf]B\r",sendsum,filessize);
+		//printf("send Bits:[%10.0lf/%10.0lf]B\r",sendsum,filessize);
 
 		bzero(buffer,MAX_MESG_LEN);
 	}
-	printf("\tsend Bits:[%10.0lf/%10.0lf]B\n",sendsum,filessize);
+	sprintf(tmpstr,"send Bits:[%10.0lf/%10.0lf]B",sendsum,filessize);
+	logprintf(tmpstr);
 	fclose(fpout);
 	
 	return 0;
@@ -214,10 +270,10 @@ int commandput(int client_fd,char* filesname,double filessize)
 	sprintf(tmpstr,"./music/%s",filesname);
 	if((access(tmpstr,F_OK))!=-1)
 	{
-		printf("\tFile already exist\n");
+		logprintf("File already exist");
 		if (send(client_fd, "REPETITION\n", strlen("REPETITION\n")+1, 0) == -1)
 		{
-			printf("\tsend error!\n");
+			//printf("send error!\n");
 			//close(client_fd);
 			return 1;
 		}
@@ -226,7 +282,7 @@ int commandput(int client_fd,char* filesname,double filessize)
 	
 	if (send(client_fd, "OK\n", strlen("OK\n")+1, 0) == -1)
 	{
-		printf("\tsend error!\n");
+		//printf("send error!\n");
 		//close(client_fd);
 		return 1;
 	}
@@ -234,7 +290,7 @@ int commandput(int client_fd,char* filesname,double filessize)
 	FILE *fpput = fopen(tmpstr, "w");
 	if (fpput == NULL)
 	{
-		printf("File:\t%s Can Not Write!\n", filesname);
+		logprintf("File Can Not Write");
 		return 1;
 	}
 
@@ -246,14 +302,13 @@ int commandput(int client_fd,char* filesname,double filessize)
 	for(;(length = recv(client_fd, buffer, MAX_MESG_LEN, 0))>0;)
 	{
 		recbit = fwrite(buffer, sizeof(char), length, fpput);
-
 		recsum+=recbit;
-		printf("\trec Bits :[%10.0lf/%10.0lf]B\r",recsum,filessize);
-
+		//printf("rec Bits:[%10.0lf/%10.0lf]B\r",recsum,filessize);
 		bzero(buffer, MAX_MESG_LEN);
 	}
 
-	printf("\trec Bits :[%10.0lf/%10.0lf]B\n",recsum,filessize);
+	sprintf(tmpstr,"rec Bits:[%10.0lf/%10.0lf]B",recsum,filessize);
+	logprintf(tmpstr);
 
 	fclose(fpput);
 	
@@ -276,18 +331,20 @@ int commanddel(int client_fd,char* filesname)
 			musicnums--;
 			savelist();
 			sprintf(tmpstr,"./music/%s",filesname);
-			//printf("\t[%s]\n",tmpstr);
+			//printf("[%s]\n",tmpstr);
+			logprintf(tmpstr);
 			if(remove(tmpstr)==0)
 			{
-				printf("\tDEL SUCCEED\n");
+				logprintf("DEL SUCCEED");
 			}
 			else
 			{
-				perror("remove");
+				//perror("remove error");
+				logprintf("remove error");
 			}
 			if (send(client_fd, "SUCCEED\n", strlen("SUCCEED\n")+1, 0) == -1)
 			{
-				printf("\tsend error!\n");
+				//printf("send error!\n");
 				//close(client_fd);
 				return 1;
 			}
@@ -296,7 +353,7 @@ int commanddel(int client_fd,char* filesname)
 	}
 	if(i==MAX_MP3_NUMS)
 	{
-		printf("\tFile not found\n");
+		logprintf("File not found");
 	}
 	return 0;
 }
@@ -326,23 +383,28 @@ void thfuniction(int* sockfd)
 
 	if(strcmp(command,"LIST")==0)
 	{
-		printf("\tcommand  :[%s]\n",command);
+		listnums++;
+		logprintf("list");
+		//printf("command :[%s]\n",command);
 		commandlist(client_fd);
 	}
 	else if(strcmp(command,"GET")==0)
 	{
+		getnums++;
 		#ifdef RUNONWINDOWS
 		g2u(filesname,strlen(filesname),tmpstr,MAX_MESG_LEN);
 		strcpy(filesname,tmpstr);
 		#endif
-		printf("\
-\tcommand  :[%s]\n\
-\tfilesname:[%s]\n",
-command,filesname);
+		sprintf(tmpstr,"\
+command:[%s] \
+filesname:[%s]",
+command,filesname);//*/
+		logprintf(tmpstr);
 		commandget(client_fd,filesname);
 	}
 	else if(strcmp(command,"PUT")==0)
 	{
+		putnums++;
 		#ifdef RUNONWINDOWS
 		g2u(filesname,strlen(filesname),tmpstr,MAX_MESG_LEN);
 		strcpy(filesname,tmpstr);
@@ -354,14 +416,15 @@ command,filesname);
 		strcpy(duration,tmpstr);
 		#endif
 		
-		printf("\
-\tcommand  :[%s]\n\
-\tfilesname:[%s]\n\
-\tauthor   :[%s]\n\
-\tspecial  :[%s]\n\
-\tduration :[%s]\n\
-\tsize     :[%.0lf]B\n",
-command,filesname,author,special,duration,filessize);
+		sprintf(tmpstr,"\
+command:[%s] \
+filesname:[%s] \
+author:[%s] \
+special:[%s] \
+duration:[%s] \
+size:[%.0lf]B",
+command,filesname,author,special,duration,filessize);//*/
+		logprintf(tmpstr);
 
 		for(i=0;i<MAX_MP3_NUMS;i++)
 		{
@@ -385,7 +448,7 @@ command,filesname,author,special,duration,filessize);
 		{
 			if (send(client_fd, "NOT ENOUGH\n", strlen("NOT ENOUGH\n")+1, 0) == -1)
 			{
-				printf("\tsend error!\n");
+				//printf("send error!\n");
 				//close(client_fd);
 				//return 1;
 			}
@@ -393,35 +456,51 @@ command,filesname,author,special,duration,filessize);
 	}
 	else if(strcmp(command,"DEL")==0)
 	{
+		delnums++;
 		#ifdef RUNONWINDOWS
 		g2u(filesname,strlen(filesname),tmpstr,MAX_MESG_LEN);
 		strcpy(filesname,tmpstr);
 		#endif
 		
-		printf("\
-\tcommand  :[%s]\n\
-\tfilesname:[%s]\n",
+		sprintf(tmpstr,"\
+command:[%s] \
+filesname:[%s]",
 command,filesname);
+		logprintf(tmpstr);
 		commanddel(client_fd,filesname);
 	}
 	else
 	{
-		printf("\tcommand not found\n");
+		sprintf(tmpstr,"[%s] not found",command);
+		logprintf(tmpstr);
 		send(client_fd, "NULL\n", strlen("NULL\n")+1, 0);
 	}
 
-	printf("\tsocket close\n");
+	//printf("socket close\n");
 	close(client_fd);
 }
 
-//初始化
+//初始化 读取存储音乐列表
 int init()
 {
-	system("echo encode:$LANG");
-	printf("load data\n");
+	struct timeval tv;
+	struct tm* ptm;
+	char time_str[128];
+	FILE* fplog=fopen("log.txt","w");
+	gettimeofday(&tv, NULL);
+	ptm = localtime(&tv.tv_sec);
+	strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", ptm);
+	fprintf(fplog,"[%s]:run\n",time_str);
+	fclose(fplog);
+
+	printf("\033[40;37m");
+	
+	//system("echo encode:$LANG");
+	//printf("load data\n");
 	if(opendir("./music")==NULL)
 	{
-		printf("create music folder\n");
+		logprintf("create music folder");
+		//printf("create music folder\n");
 		mkdir("./music",0755);
 	}
 
@@ -443,25 +522,106 @@ int init()
 			musiclist[musicnums].special,
 			musiclist[musicnums].duration);
 			musiclist[musicnums].state=1;
+			tmpstr[strlen(tmpstr)-1]='\0';
+			logprintf(tmpstr);
 		}
 		fclose(fpinit);
 	}
-	printf("[%4d] CMF\n",musicnums);
+	// printf("[%4d] CMF\n",musicnums);
 
-	for(i=0;i<musicnums;i++)
-	{
-		printf("%2d: [%12s] [%5s] [%5s] [%5s] [%d]\n",
-		i,
-		musiclist[i].filesname,
-		musiclist[i].author,
-		musiclist[i].special,
-		musiclist[i].duration,
-		musiclist[i].state);
-	}
-	
+	// for(i=0;i<musicnums;i++)
+	// {
+	// 	printf("%2d: [%12s] [%5s] [%5s] [%5s] [%d]\n",
+	// 	i,
+	// 	musiclist[i].filesname,
+	// 	musiclist[i].author,
+	// 	musiclist[i].special,
+	// 	musiclist[i].duration,
+	// 	musiclist[i].state);
+	// }
 
-	printf("load completed\n");
+	system("clear");
+	/*printf("\
+                                              ***      **     ***     *** \n\
+                                              ***      ***    ****   **** \n\
+                                              ***      ***     ***  ***   \n\
+                                              ***      ***      *******   \n\
+                                              ***      ***       *****    \n\
+                                              ***      ***        ***     \n\
+                                              ***      **         ***     \n\
+                                              ******** ********   ***     \n\
+                                              ******** ********   ***     \n\
+");//*/
+	printf("\
+                                                *********                       \n\
+                                               ************                     \n\
+                                               *************                    \n\
+                                              **  ***********                   \n\
+                                             ***  ****** *****                  \n\
+                                             *** *******   ****                 \n\
+                                            ***  ********** ****                \n\
+                                           ****  *********** ****               \n\
+                                         *****   ***********  *****             \n\
+                                        ******   *** ********   *****           \n\
+                                        *****   ***   ********   ******         \n\
+                                       ******   ***  ***********   ******       \n\
+                                      ******   **** **************  ******      \n\
+                                     *******  ********************* *******     \n\
+                                     *******  ******************************    \n\
+                                    *******  ****** ***************** *******   \n\
+                                    *******  ****** ****** *********   ******   \n\
+                                    *******    **  ******   ******     ******   \n\
+                                    *******        ******    *****     *****    \n\
+                                     ******        *****     *****     ****     \n\
+                                      *****        ****      *****     ***      \n\
+                                       *****       ***        ***      *        \n\
+                                         **       ****        ****              \n\
+");//*/
+	printf("\033[0;1H\
+╭────────────┬─────────────┬────────────╮\n\
+│  run time  │ client nums │ music nums │\n\
+├────────────┼─────────────┼────────────┤\n\
+│            │             │            │\n\
+├──────────┬─┴──────┬──────┴──┬─────────┤\n\
+│   LIST   │   GET  │   PUT   │   DEL   │\n\
+├──────────┼────────┼─────────┼─────────┤\n\
+│          │        │         │         │\n\
+╰──────────┴────────┴─────────┴─────────╯\n\
+\033[?25l\
+");
+
+	logprintf("start server");
 	return 0;
+}
+
+//每秒更新客户端数
+void updatainfo(int sig)
+{
+	//struct timeval tv;
+	//struct tm* ptm;
+	//char time_str[128];
+	if(SIGALRM==sig)
+	{
+		runtimes++;
+		//gettimeofday(&tv, NULL);
+		//ptm = localtime(&tv.tv_sec);
+		//strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", ptm);
+		printf("\033[%d;%dH\
+\033[7m%04.0lf:%02d:%02d\033[27m\
+ │    \033[7m%4d\033[27m     │    \033[7m%4d\033[27m\
+\033[%d;%dH\
+\033[7m%8d\033[27m │ \033[7m%6d\033[27m │ \033[7m%7d\033[27m │ \033[7m%7d\033[27m\
+\n\n",
+4,3,//行 列
+runtimes/3600,(int)(runtimes/60)%60,(int)runtimes%60,sumclient,musicnums,
+8,3,
+listnums,getnums,putnums,delnums);
+//printf("\033[%d;%dH", 8, 3);
+//printf("%8d | %6d | %7d | %7d",listnums,getnums,putnums,delnums);
+		alarm(1);
+		sumclient=0;
+	}
+	return ;
 }
 
 int main()
@@ -472,17 +632,16 @@ int main()
 	int sockfd;
 	int client_fd; /*sockfd:监听socket;client_fd:数据传输socket */
 	char client_mesg[MAX_MESG_LEN];
+	char tmpstr[MAX_MESG_LEN]="";
 	struct sockaddr_in my_addr; /* load address message */
 	struct sockaddr_in remote_addr; /* client address message */
-
-	init();
 	
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 	{
-		perror( "init socket error:\n"); 
+		logprintf("init socket error"); 
 		exit(1);
 	}
-	printf("init socket\n");
+	//printf("init socket\n");
 	my_addr.sin_family=AF_INET;
 	my_addr.sin_port=htons(SERVPORT);
 	my_addr.sin_addr.s_addr = INADDR_ANY;
@@ -492,46 +651,50 @@ int main()
 	int on=1;
 	if((setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)))<0)
 	{
-		perror("set socket option error:");
+		logprintf("set socket option error");
 		exit(1);
 	}
-	printf("set socket option\n");
+	//printf("set socket option\n");
 	if(bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr))==-1)
 	{
-		perror( "bind error: ");
+		logprintf("bind error");
 		exit(1);
 	}
-	printf("bind\n");
+	//printf("bind\n");
 
 	#ifdef PTHREADTEST
-		printf("multithreading mode\n");
+		logprintf("multithreading mode");
 	#else
-		printf("single thread mode\n");
+		logprintf("single thread mode");
 	#endif
 	
 	if (listen(sockfd, BACKLOG) == -1)
 	{
-		perror( "listen error:\n");
+		logprintf("listen error");
 		exit(1);
 	}
-	printf("listen:\n");
+	//printf("listen:\n");
+	init();
 	
+	signal(SIGALRM, updatainfo);
+	alarm(1);
 	sin_size = sizeof(struct sockaddr_in);
-	int clientid=1;
-	for(;;clientid++)
+	for(;;)
 	{
 		if ((client_fd = accept(sockfd, (struct sockaddr *) &remote_addr, (socklen_t *)&sin_size)) == -1)
 		{
-			perror( "connect error, client socket closed:\n");
+			logprintf("connect error, client socket closed");
 			continue;
 		}
-		printf("[%04d-%s:%2d] connect\n",clientid,inet_ntoa(remote_addr.sin_addr),client_fd);
-
+		sprintf(client_mesg,"[%s:%2d] connect",inet_ntoa(remote_addr.sin_addr),client_fd);
+		logprintf(client_mesg);
+		sumclient++;
+		
 		#ifdef PTHREADTEST
 			//多线程
 			if(pthread_create(&id,NULL,(void *)thfuniction,(void*)&client_fd)!=0)// 成功返回0，错误返回错误编号
 			{
-				printf ("create thread error!\n");
+				logprintf("create thread error!");
 				close(client_fd);
 			}
 		#else

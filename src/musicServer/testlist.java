@@ -21,7 +21,7 @@ public class testlist {
             netin=new DataInputStream(client.getInputStream()); 
             PrintWriter pw=new PrintWriter(client.getOutputStream());
             BufferedReader br=new BufferedReader(new InputStreamReader(client.getInputStream()));
-            pw.write("LIST");
+            pw.write("LIST\n");
             pw.flush();
             //netout = new DataOutputStream(client.getOutputStream());
             //netout.writeChars("GET 003.mp3");

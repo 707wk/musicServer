@@ -22,7 +22,7 @@ public class testput {
             //netin=new DataInputStream(client.getInputStream()); 
             PrintWriter pw=new PrintWriter(client.getOutputStream());
             BufferedReader br=new BufferedReader(new InputStreamReader(client.getInputStream()));
-            pw.write("PUT '0013.mp3' '未知8' '无8' '4:56' '1234568'");
+            pw.write("PUT '0015.mp3' '未知8' '无8' '4:56' '1234568'\n");
             pw.flush();
             netout = new DataOutputStream(client.getOutputStream());
             //netout.writeChars("GET 003.mp3");
