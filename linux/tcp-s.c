@@ -384,7 +384,7 @@ void thfuniction(int* sockfd)
 	if(strcmp(command,"LIST")==0)
 	{
 		listnums++;
-		logprintf("list");
+		logprintf("LIST");
 		//printf("command :[%s]\n",command);
 		commandlist(client_fd);
 	}
